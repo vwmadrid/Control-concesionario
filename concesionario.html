@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plano Taller (50 Plazas) - Escáner Bastidor</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; text-align: center; }
+        h1 { color: #333; margin-bottom: 10px; }
+        
+        .controls { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 900px; margin: 0 auto 20px auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+        .stats { font-size: 1.1em; font-weight: bold; color: #555; }
+        .search-box input { padding: 10px; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; width: 250px; }
+
+        .map-wrapper { background-color: #e2e8f0; padding: 20px; border-radius: 12px; border: 3px solid #cbd5e1; box-shadow: inset 0 0 20px rgba(0,0,0,0.05); width: max-content; margin: 0 auto; position: relative; }
+        .map-grid { display: grid; grid-template-columns: repeat(24, 32px); grid-template-rows: repeat(20, 42px); gap: 4px; }
+
+        /* Arquitectura (Se mantiene igual) */
+        .pasillo-visual { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: bold; letter-spacing: 4px; background-color: #f8fafc; border-radius: 4px; }
+        .pasillo-main { grid-column: 6 / 10; grid-row: 1 / 17; writing-mode: vertical-rl; text-transform: uppercase; border-left: 2px dashed #cbd5e1; }
+        .pasillo-main-bottom { grid-column: 6 / 8; grid-row: 17 / 21; border-left: 2px dashed #cbd5e1; border-radius: 0 0 4px 4px; }
+        .pasillo-conexion { grid-column: 10 / 22; grid-row: 6 / 7; border-top: 2px dashed #cbd5e1; border-bottom: 2px dashed #cbd5e1; position: relative; z-index: 1; }
+        .pasillo-conexion-inferior { grid-column: 10 / 22; grid-row: 16 / 17; border-top: 2px dashed #cbd5e1; border-bottom: 2px dashed #cbd5e1; position: relative; z-index: 1; }
+        .pasillo-conexion::before, .pasillo-conexion-inferior::before { content: ""; position: absolute; left: -6px; top: 0; bottom: 0; width: 10px; background-color: #f8fafc; }
+        .ramp-visual { grid-column: 16 / 22; grid-row: 7 / 16; background: repeating-linear-gradient(45deg, #f8fafc, #f8fafc 10px, #f1f5f9 10px, #f1f5f9 20px); border: 2px solid #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; font-weight: bold; font-size: 0.9em; border-radius: 4px; margin: 2px; }
+        .zulo-visual { grid-column: 22 / 25; grid-row: 15 / 21; background-color: white; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: bold; font-size: 1.2em; letter-spacing: 3px; border-radius: 4px; margin: 2px; user-select: none; cursor: default; }
+        .emergencia-visual { grid-column: 16 / 22; grid-row: 2 / 5; background-color: white; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; text-align: center; color: #94a3b8; font-weight: bold; font-size: 0.9em; letter-spacing: 2px; border-radius: 4px; margin: 2px; user-select: none; cursor: default; }
+        .llaves-visual { grid-column: 22 / 25; grid-row: 5 / 7; background-color: white; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: bold; font-size: 1.1em; letter-spacing: 2px; border-radius: 4px; margin: 2px; user-select: none; cursor: default; }
+
+        /* Plazas */
+        .spot { background-color: #4CAF50; color: white; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; border: 1px solid rgba(0,0,0,0.1); width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; z-index: 2; }
+        .spot:hover { filter: brightness(1.1); transform: scale(1.03); z-index: 10;}
+        .spot.occupied { background-color: #F44336; }
+        .spot.warning { background-color: #8B0000; }
+        .spot-number { position: absolute; top: 2px; left: 4px; font-size: 0.85em; font-weight: bold; color: #ffe0e0; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
+        .plate-info { font-size: 0.8em; font-weight: bold; word-break: break-all; margin-top: 10px; line-height: 1.1;}
+        .time-info { font-size: 0.7em; background: rgba(0,0,0,0.25); padding: 2px 5px; border-radius: 4px; margin-top: 3px;}
+        
+        /* Modal Escáner */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover, .close:focus { color: black; text-decoration: none; }
+        .btn { padding: 10px 15px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; font-weight: bold; color: white;}
+        .btn-green { background-color: #4CAF50; }
+        .btn-blue { background-color: #2196F3; }
+        .btn-red { background-color: #f44336; }
+        input[type="text"] { width: 85%; padding: 12px; font-size: 1.1em; border: 2px solid #ccc; border-radius: 4px; margin-bottom: 15px; text-transform: uppercase; font-family: monospace; text-align: center;}
+        
+        .history-container { max-width: 900px; margin: 40px auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: left; }
+        .history-container h2 { margin-top: 0; color: #333; font-size: 1.3em; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 0.9em;}
+        th { background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+
+    <h1>Mapa Taller - Control por Bastidor</h1>
+    
+    <div class="controls">
+        <div class="stats">
+            🟢 Libres: <span id="free-count">0</span> | 🔴 Ocupadas: <span id="occupied-count">0</span>
+        </div>
+        <div class="search-box">
+            🔍 <input type="text" id="buscador" placeholder="Buscar bastidor..." onkeyup="buscarCoche()">
+        </div>
+    </div>
+
+    <div class="map-wrapper">
+        <div class="map-grid" id="parking-grid">
+            <div class="pasillo-visual pasillo-main">PASILLO CENTRAL ⬇⬆</div>
+            <div class="pasillo-visual pasillo-main-bottom"></div>
+            <div class="pasillo-visual pasillo-conexion">➡</div>
+            <div class="pasillo-visual pasillo-conexion-inferior"></div>
+            <div class="ramp-visual"><span>RAMPA SÓTANO</span><span style="font-size: 0.7em;">9% PENDIENTE</span></div>
+            <div class="zulo-visual">ZULO</div>
+            <div class="emergencia-visual">SALIDA DE<br>EMERGENCIA</div>
+            <div class="llaves-visual">LLAVES</div>
+        </div>
+    </div>
+
+    <div id="vinModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal()">&times;</span>
+            <h2 style="margin-top:0;">Aparcar en Plaza <span id="modal-spot-id"></span></h2>
+            <p style="color: #666; font-size: 0.9em;">Introduce los 17 dígitos del bastidor (VIN)</p>
+            
+            <input type="text" id="vinInput" maxlength="17" placeholder="EJ: VSSZZZ3CZJE123456">
+            <br>
+            <button class="btn btn-green" onclick="guardarBastidor()">💾 Guardar Manual</button>
+            <hr style="border:0; border-top:1px solid #ddd; margin: 20px 0;">
+            <p style="color: #666; font-size: 0.9em;">O escanea el código de barras/QR de la hoja de trabajo</p>
+            <button class="btn btn-blue" id="btn-scan" onclick="iniciarEscaner()">📷 Abrir Cámara y Escanear</button>
+            <button class="btn btn-red" id="btn-stop-scan" onclick="detenerEscaner()" style="display:none;">❌ Detener Cámara</button>
+            <div id="reader" style="width: 100%; margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <div class="history-container">
+        <h2>📋 Últimas Salidas (Historial)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Plaza</th>
+                    <th>Bastidor (VIN)</th>
+                    <th>Entrada</th>
+                    <th>Salida</th>
+                    <th>Tiempo Parado</th>
+                </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const mapConfig = [
+            ...Array.from({length: 20}, (_, i) => ({ id: (12 + i).toString(), col: '1 / 6', row: `${i + 1} / ${i + 2}` })),
+            { id: '11', col: '10 / 16', row: '1 / 2' }, { id: '9',  col: '10 / 16', row: '2 / 3' },
+            { id: '8',  col: '10 / 16', row: '3 / 4' }, { id: '7',  col: '10 / 16', row: '4 / 5' }, 
+            { id: '6',  col: '10 / 16', row: '5 / 6' }, { id: '10', col: '16 / 22', row: '1 / 2' },
+            { id: '5',  col: '16 / 22', row: '5 / 6' },
+            ...Array.from({length: 9}, (_, i) => ({ id: (50 - i).toString(), col: '10 / 16', row: `${7 + i} / ${8 + i}` })),
+            { id: '4',  col: '22 / 25', row: '7 / 9' }, { id: '3',  col: '22 / 25', row: '9 / 11' },
+            { id: '2',  col: '22 / 25', row: '11 / 13' }, { id: '1',  col: '22 / 25', row: '13 / 15' },
+            { id: '41', col: '8 / 10',  row: '17 / 19' }, { id: '40', col: '10 / 13', row: '17 / 19' },
+            { id: '39', col: '13 / 16', row: '17 / 19' }, { id: '38', col: '16 / 19', row: '17 / 19' },
+            { id: '37', col: '19 / 22', row: '17 / 19' }, { id: '32', col: '8 / 10',  row: '19 / 21' },
+            { id: '33', col: '10 / 13', row: '19 / 21' }, { id: '34', col: '13 / 16', row: '19 / 21' },
+            { id: '35', col: '16 / 19', row: '19 / 21' }, { id: '36', col: '19 / 22', row: '19 / 21' }
+        ];
+
+        let parkingData = JSON.parse(localStorage.getItem('parkingData')) || {};
+        let parkingHistory = JSON.parse(localStorage.getItem('parkingHistory')) || [];
+        
+        // Variables para el escáner
+        let plazaActual = null;
+        let html5QrcodeScanner = null;
+
+        function calcularTiempo(fechaEntradaMs, fechaSalidaMs = Date.now()) {
+            const diferencia = fechaSalidaMs - fechaEntradaMs;
+            const minutos = Math.floor((diferencia / (1000 * 60)) % 60);
+            const horas = Math.floor((diferencia / (1000 * 60 * 60)) % 24);
+            const dias = Math.floor(diferencia / (1000 * 60 * 60 * 24));
+            if (dias > 0) return `${dias}d ${horas}h`;
+            if (horas > 0) return `${horas}h ${minutos}m`;
+            return `${minutos}m`;
+        }
+
+        function formatearFecha(fechaMs) {
+            const fecha = new Date(fechaMs);
+            return fecha.toLocaleDateString() + ' ' + fecha.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        function renderMap() {
+            const grid = document.getElementById('parking-grid');
+            const plazasAntiguas = grid.querySelectorAll('.spot');
+            plazasAntiguas.forEach(p => p.remove());
+
+            let occupied = 0;
+
+            mapConfig.forEach(config => {
+                const spotDiv = document.createElement('div');
+                spotDiv.className = 'spot';
+                spotDiv.id = 'plaza-' + config.id;
+                spotDiv.style.gridColumn = config.col;
+                spotDiv.style.gridRow = config.row;
+                
+                const spotTitle = document.createElement('div');
+                spotTitle.className = 'spot-number';
+                spotTitle.textContent = config.id;
+                spotDiv.appendChild(spotTitle);
+
+                const data = parkingData[config.id];
+
+                if (data) {
+                    spotDiv.classList.add('occupied');
+                    if (Date.now() - data.fechaEntrada > 432000000) spotDiv.classList.add('warning');
+
+                    const plateDiv = document.createElement('div');
+                    plateDiv.className = 'plate-info';
+                    plateDiv.textContent = data.matricula; // Internamente se sigue llamando matricula en los datos
+                    spotDiv.appendChild(plateDiv);
+
+                    if (data.fechaEntrada) {
+                        const timeDiv = document.createElement('div');
+                        timeDiv.className = 'time-info';
+                        timeDiv.textContent = '⏱️ ' + calcularTiempo(data.fechaEntrada);
+                        spotDiv.appendChild(timeDiv);
+                    }
+                    occupied++;
+                }
+
+                spotDiv.onclick = () => procesarPlaza(config.id);
+                grid.appendChild(spotDiv);
+            });
+
+            document.getElementById('occupied-count').textContent = occupied;
+            document.getElementById('free-count').textContent = mapConfig.length - occupied;
+            buscarCoche(); 
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-body');
+            tbody.innerHTML = '';
+            if (parkingHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#888;">No hay registros.</td></tr>';
+                return;
+            }
+            parkingHistory.slice(0, 15).forEach(record => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${record.plaza}</strong></td>
+                    <td style="font-family: monospace; font-size:1.1em;">${record.matricula}</td>
+                    <td>${formatearFecha(record.fechaEntrada)}</td>
+                    <td>${formatearFecha(record.fechaSalida)}</td>
+                    <td><strong>${record.tiempoTotal}</strong></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function procesarPlaza(spotNum) {
+            const data = parkingData[spotNum];
+            if (data) {
+                // SACAR EL COCHE
+                if (confirm(`¿Registrar la SALIDA de la Plaza ${spotNum}?\nBastidor: ${data.matricula}`)) {
+                    const fechaSalida = Date.now();
+                    parkingHistory.unshift({
+                        plaza: spotNum, matricula: data.matricula, fechaEntrada: data.fechaEntrada,
+                        fechaSalida: fechaSalida, tiempoTotal: calcularTiempo(data.fechaEntrada, fechaSalida)
+                    });
+                    if (parkingHistory.length > 100) parkingHistory.pop(); 
+                    delete parkingData[spotNum];
+                    saveData(); renderMap(); renderHistory();
+                }
+            } else {
+                // ABRIR MODAL PARA METER EL COCHE
+                plazaActual = spotNum;
+                document.getElementById('modal-spot-id').textContent = spotNum;
+                document.getElementById('vinInput').value = '';
+                document.getElementById('vinModal').style.display = 'block';
+            }
+        }
+
+        // --- FUNCIONES DEL MODAL Y ESCÁNER ---
+
+        function cerrarModal() {
+            document.getElementById('vinModal').style.display = 'none';
+            detenerEscaner();
+        }
+
+        function guardarBastidor() {
+            const vin = document.getElementById('vinInput').value.trim().toUpperCase();
+            
+            // VALIDACIÓN ESTRICTA DE 17 CARACTERES
+            if (vin.length !== 17) {
+                alert(`⚠️ Error: El bastidor debe tener exactamente 17 caracteres.\nHas introducido ${vin.length} caracteres.`);
+                return;
+            }
+
+            parkingData[plazaActual] = { matricula: vin, fechaEntrada: Date.now() };
+            saveData(); 
+            cerrarModal();
+            renderMap();
+        }
+
+        function iniciarEscaner() {
+            document.getElementById('btn-scan').style.display = 'none';
+            document.getElementById('btn-stop-scan').style.display = 'inline-block';
+            
+            // Inicializar el lector de HTML5-QRCode
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 100 } };
+
+            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+            .catch(err => {
+                alert("No se pudo acceder a la cámara. Recuerda que el móvil necesita conexión segura HTTPS para usarla.");
+                detenerEscaner();
+            });
+        }
+
+        function detenerEscaner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                }).catch(err => console.log(err));
+            }
+            document.getElementById('btn-scan').style.display = 'inline-block';
+            document.getElementById('btn-stop-scan').style.display = 'none';
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // El lector ha encontrado un código. Lo ponemos en la caja de texto.
+            let vinEscaneado = decodedText.trim().toUpperCase();
+            document.getElementById('vinInput').value = vinEscaneado;
+            
+            // Pitido de éxito visual (paramos la cámara automáticamente)
+            detenerEscaner();
+            
+            // Avisar si la lectura no cuadra con un bastidor
+            if (vinEscaneado.length !== 17) {
+                alert(`⚠️ Se ha escaneado un código, pero no parece un bastidor válido (tiene ${vinEscaneado.length} caracteres).\nComprueba el texto en la caja.`);
+            }
+        }
+
+        // ------------------------------------
+
+        function buscarCoche() {
+            const texto = document.getElementById('buscador').value.toUpperCase();
+            mapConfig.forEach(config => {
+                const spotDiv = document.getElementById('plaza-' + config.id);
+                const data = parkingData[config.id];
+                spotDiv.style.boxShadow = ''; spotDiv.style.border = '1px solid rgba(0,0,0,0.1)';
+                spotDiv.style.transform = ''; spotDiv.style.zIndex = '0';
+
+                if (texto !== '' && data && data.matricula.includes(texto)) {
+                    spotDiv.style.boxShadow = '0 0 20px 8px #FFD700'; spotDiv.style.border = '3px solid #FF8C00';
+                    spotDiv.style.transform = 'scale(1.1)'; spotDiv.style.zIndex = '10';
+                }
+            });
+        }
+
+        function saveData() {
+            localStorage.setItem('parkingData', JSON.stringify(parkingData));
+            localStorage.setItem('parkingHistory', JSON.stringify(parkingHistory));
+        }
+
+        renderMap(); renderHistory(); setInterval(renderMap, 60000);
+    </script>
+</body>
+</html>
